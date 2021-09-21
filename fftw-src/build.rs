@@ -58,10 +58,22 @@ fn correct_sum() -> [u8; 16] {
     bytes
 }
 
+/// Converts a Rust target triple into an autotools target triple that can be used to cross-compile
+/// FFTW
+fn rust_target_to_fftw_target(target: &str) -> &'static str {
+    match target {
+        "armv7-unknown-linux-gnueabihf" => "arm-linux-gnueabihf",
+        _ => panic!("Unsupported target {}", target),
+    }
+}
+
 fn main() -> Result<()> {
     let out_dir = PathBuf::from(var("OUT_DIR").unwrap());
     let archive_path = out_dir.join(ARCHIVE);
     let src_dir = out_dir.join(FFTW);
+
+    let host = var("HOST").unwrap();
+    let target = var("TARGET").unwrap();
 
     if !archive_path.exists() {
         download(URI, ARCHIVE, &out_dir);
@@ -71,12 +83,22 @@ fn main() -> Result<()> {
     }
     expand(&archive_path, &out_dir);
 
-    build_fftw(
-        &["--enable-static", "--with-pic", "--enable-single"],
-        &src_dir,
-        &out_dir,
-    );
-    build_fftw(&["--enable-static", "--with-pic"], &src_dir, &out_dir);
+    if host == target {
+        build_fftw(
+            &["--enable-static", "--with-pic", "--enable-single"],
+            &src_dir,
+            &out_dir,
+        );
+        build_fftw(&["--enable-static", "--with-pic"], &src_dir, &out_dir);
+    } else {
+        let fftw_target = rust_target_to_fftw_target(&target);
+        build_fftw(
+            &["--enable-static", "--with-pic", "--enable-single", "--host", &fftw_target],
+            &src_dir,
+            &out_dir,
+        );
+        build_fftw(&["--enable-static", "--with-pic", "--host", &fftw_target], &src_dir, &out_dir);
+    }
 
     println!(
         "cargo:rustc-link-search={}",
