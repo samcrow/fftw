@@ -43,6 +43,15 @@ fn download_archive_windows(out_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Converts a Rust target triple into an autotools target triple that can be used to cross-compile
+/// FFTW
+fn rust_target_to_fftw_target(target: &str) -> &'static str {
+    match target {
+        "armv7-unknown-linux-gnueabihf" => "arm-linux-gnueabihf",
+        _ => panic!("Unsupported target {}", target),
+    }
+}
+
 fn build_unix(out_dir: &Path) {
     let src_dir = PathBuf::from(var("CARGO_MANIFEST_DIR").unwrap()).join("fftw-3.3.8");
     let out_src_dir = out_dir.join("src");
@@ -59,11 +68,26 @@ fn build_unix(out_dir: &Path) {
         },
     )
     .unwrap();
-    if !out_dir.join("lib/libfftw3.a").exists() {
-        build_fftw(&[], &out_src_dir, &out_dir);
-    }
-    if !out_dir.join("lib/libfftw3f.a").exists() {
-        build_fftw(&["--enable-single"], &out_src_dir, &out_dir);
+
+    let host = var("HOST").unwrap();
+    let target = var("TARGET").unwrap();
+
+    if host == target {
+        if !out_dir.join("lib/libfftw3.a").exists() {
+            build_fftw(&[], &out_src_dir, &out_dir);
+        }
+        if !out_dir.join("lib/libfftw3f.a").exists() {
+            build_fftw(&["--enable-single"], &out_src_dir, &out_dir);
+        }
+    } else {
+        // Cross-compile
+        let fftw_target = rust_target_to_fftw_target(&target);
+        if !out_dir.join("lib/libfftw3.a").exists() {
+            build_fftw(&["--host", fftw_target], &out_src_dir, &out_dir);
+        }
+        if !out_dir.join("lib/libfftw3f.a").exists() {
+            build_fftw(&["--enable-single", "--host", fftw_target], &out_src_dir, &out_dir);
+        }
     }
 }
 
